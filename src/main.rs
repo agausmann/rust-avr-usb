@@ -228,7 +228,7 @@ impl UsbBus for Usb {
                 .write_with_ones(|w| w.fifocon().clear_bit().rxouti().clear_bit());
 
             let ep_in_complete = self.ep_in_complete.borrow(cs);
-            ep_in_complete.set(ep_in_complete.get() | 1 << u8::from(ep_addr));
+            ep_in_complete.set(ep_in_complete.get() | 1 << ep_addr.index());
             Ok(bytes_written)
         })
     }
