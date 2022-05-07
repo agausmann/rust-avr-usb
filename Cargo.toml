@@ -9,6 +9,8 @@ edition = "2021"
 
 [dependencies]
 avr-std-stub = "1.0"
+avr-device = "0.3"
+usb-device = "0.2"
 
 [dependencies.atmega-hal]
 git = "https://github.com/agausmann/avr-hal.git"

@@ -117,7 +117,9 @@ name = "rust-avr-usb"
 version = "0.1.0"
 dependencies = [
  "atmega-hal",
+ "avr-device",
  "avr-std-stub",
+ "usb-device",
 ]
 
 [[package]]
@@ -195,6 +197,12 @@ name = "unicode-xid"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "957e51f3646910546462e67d5f7599b9e4fb8acdd304b087a6494730f9eebf04"
+
+[[package]]
+name = "usb-device"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6be90410d4772074ea49525e2e753b65920b94b57eee21a6ef7b6a6fe6296245"
 
 [[package]]
 name = "vcell"

@@ -1,0 +1,2 @@
+- Is ep0 configured via alloc_ep?
+- Fix read&write routines for control (SETUP) endpoints
