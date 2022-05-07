@@ -93,11 +93,14 @@ impl Usb {
         cs: &CriticalSection,
         addr: EndpointAddress,
     ) -> usb_device::Result<()> {
-        let addr: u8 = addr.into();
-        if addr <= self.last_endpoint {
+        let addr = addr.index();
+        if addr <= self.last_endpoint as usize {
             return Err(UsbError::InvalidEndpoint);
         }
-        self.usb.borrow(cs).uenum.write(|w| unsafe { w.bits(addr) });
+        self.usb
+            .borrow(cs)
+            .uenum
+            .write(|w| unsafe { w.bits(addr as u8) });
         Ok(())
     }
 }
@@ -106,16 +109,37 @@ impl UsbBus for Usb {
     fn alloc_ep(
         &mut self,
         ep_dir: UsbDirection,
-        _ep_addr: Option<EndpointAddress>,
+        ep_addr: Option<EndpointAddress>,
         ep_type: EndpointType,
         max_packet_size: u16,
         _interval: u8,
     ) -> usb_device::Result<EndpointAddress> {
-        if self.last_endpoint >= MAX_ENDPOINT {
-            return Err(UsbError::EndpointOverflow);
+        // usb_device configures the control endpoint as both IN and OUT.
+        // Both configurations are otherwise identical, so ignore the IN alloc:
+        if ep_addr == Some(EndpointAddress::from_parts(0, UsbDirection::In)) {
+            return Ok(());
         }
-        self.last_endpoint += 1;
-        let ep_addr = EndpointAddress::from(self.last_endpoint);
+
+        // usb_device manually configures endpoint 0 internally.
+        //   For all others, ignore the requested index.
+        let ep_addr = match ep_addr {
+            Some(addr) if addr.index() == 0 => addr,
+            _ => {
+                if self.last_endpoint >= MAX_ENDPOINT {
+                    return Err(UsbError::EndpointOverflow);
+                }
+                self.last_endpoint += 1;
+                EndpointAddress::from_parts(self.last_endpoint, ep_dir)
+            }
+        };
+
+        // Override specified direction for control endpoints;
+        // they are all configured as "OUT" on the peripheral.
+        let ep_dir = if ep_type == EndpointType::Control {
+            UsbDirection::Out
+        } else {
+            ep_dir
+        };
 
         let dir_cfg = match ep_dir {
             UsbDirection::In => true,
@@ -141,11 +165,17 @@ impl UsbBus for Usb {
         interrupt_free(|cs| {
             self.set_current_endpoint(cs, ep_addr)?;
             let usb = self.usb.borrow(cs);
+
+            if usb.ueconx.read().epen().bit_is_set() {
+                return Err(UsbError::Unsupported);
+            }
             usb.ueconx.write(|w| w.epen().set_bit());
+
             usb.uecfg0x
                 .write(|w| w.epdir().bit(dir_cfg).eptype().bits(type_cfg));
             usb.uecfg1x
                 .write(|w| w.alloc().set_bit().epbk().bits(0).epsize().bits(size_cfg));
+
             if usb.uesta0x.read().cfgok().bit_is_set() {
                 Ok(ep_addr)
             } else {
