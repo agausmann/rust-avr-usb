@@ -1,0 +1,25 @@
+[package]
+publish = false
+name = "rust-avr-usb"
+version = "0.1.0"
+authors = ["Adam Gausmann <agausmann@fastmail.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+avr-std-stub = "1.0"
+
+[dependencies.atmega-hal]
+git = "https://github.com/agausmann/avr-hal.git"
+branch = "patch/kbforge"
+features = ["atmega32u4"]
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+opt-level = "s"
+
+[patch.crates-io]
+avr-device = { path = "/home/goose/build/avr-device" }
