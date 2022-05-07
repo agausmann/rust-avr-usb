@@ -25,6 +25,10 @@ use usb_device::{
     device::{UsbDeviceBuilder, UsbDeviceState, UsbVidPid},
     UsbDirection, UsbError,
 };
+use usbd_hid::{
+    descriptor::{KeyboardReport, SerializedDescriptor},
+    hid_class::HIDClass,
+};
 
 fn main_inner() {
     let dp = Peripherals::take().unwrap();
@@ -52,16 +56,19 @@ fn main_inner() {
     while pll.pllcsr.read().plock().bit_is_clear() {}
 
     let usb_bus = Usb::new(usb);
+
+    let mut hid_class = HIDClass::new(&usb_bus, KeyboardReport::desc(), 1);
     let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0xf667, 0x2012))
         .manufacturer("Foo")
         .product("Bar")
+        .device_class(0xef)
         .max_power(500)
         .build();
 
     status.set_high();
 
     loop {
-        usb_device.poll(&mut []);
+        usb_device.poll(&mut [&mut hid_class]);
         if usb_device.state() == UsbDeviceState::Addressed {
             indicator.set_high();
         }

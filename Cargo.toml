@@ -11,6 +11,7 @@ edition = "2021"
 avr-std-stub = "1.0"
 avr-device = "0.3"
 usb-device = "0.2"
+usbd-hid = "0.6"
 
 [dependencies.atmega-hal]
 git = "https://github.com/agausmann/avr-hal.git"
@@ -19,9 +20,11 @@ features = ["atmega32u4"]
 
 [profile.dev]
 opt-level = "s"
+lto = true
 
 [profile.release]
 opt-level = "s"
+lto = true
 
 [patch.crates-io]
 avr-device = { path = "/home/goose/build/avr-device" }
