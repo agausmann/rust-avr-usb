@@ -22,7 +22,7 @@ use avr_device::interrupt::{free as interrupt_free, CriticalSection, Mutex};
 use usb_device::{
     bus::PollResult,
     class_prelude::{EndpointAddress, EndpointType, UsbBus, UsbBusAllocator},
-    device::{UsbDeviceBuilder, UsbVidPid},
+    device::{UsbDeviceBuilder, UsbDeviceState, UsbVidPid},
     UsbDirection, UsbError,
 };
 
@@ -52,7 +52,7 @@ fn main_inner() {
     while pll.pllcsr.read().plock().bit_is_clear() {}
 
     let usb_bus = Usb::new(usb);
-    let usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0xf667, 0x2012))
+    let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0xf667, 0x2012))
         .manufacturer("Foo")
         .product("Bar")
         .max_power(500)
@@ -61,7 +61,7 @@ fn main_inner() {
     status.set_high();
 
     loop {
-        usb_device.poll(&[]);
+        usb_device.poll(&mut []);
         if usb_device.state() == UsbDeviceState::Addressed {
             indicator.set_high();
         }
@@ -117,7 +117,7 @@ impl UsbBus for Usb {
         // usb_device configures the control endpoint as both IN and OUT.
         // Both configurations are otherwise identical, so ignore the IN alloc:
         if ep_addr == Some(EndpointAddress::from_parts(0, UsbDirection::In)) {
-            return Ok(());
+            return Ok(ep_addr.unwrap());
         }
 
         // usb_device manually configures endpoint 0 internally.
@@ -129,7 +129,7 @@ impl UsbBus for Usb {
                     return Err(UsbError::EndpointOverflow);
                 }
                 self.last_endpoint += 1;
-                EndpointAddress::from_parts(self.last_endpoint, ep_dir)
+                EndpointAddress::from_parts(self.last_endpoint as usize, ep_dir)
             }
         };
 
