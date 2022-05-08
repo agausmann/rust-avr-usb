@@ -124,6 +124,7 @@ const MAX_ENDPOINT: u8 = 6;
 struct Usb {
     usb: Mutex<USB_DEVICE>,
     last_endpoint: u8,
+    control_endpoints: u8,
     ep_in_complete: Mutex<Cell<u8>>,
 }
 
@@ -135,6 +136,7 @@ impl Usb {
         UsbBusAllocator::new(Self {
             usb: Mutex::new(usb),
             last_endpoint: 0,
+            control_endpoints: 0,
             ep_in_complete: Mutex::new(Cell::new(0)),
         })
     }
@@ -153,6 +155,10 @@ impl Usb {
             .uenum
             .write(|w| unsafe { w.bits(addr as u8) });
         Ok(())
+    }
+
+    fn is_control_endpoint(&self, addr: EndpointAddress) -> bool {
+        self.control_endpoints & (1 << addr.index()) != 0
     }
 }
 
@@ -227,11 +233,14 @@ impl UsbBus for Usb {
             usb.uecfg1x
                 .write(|w| w.alloc().set_bit().epbk().bits(0).epsize().bits(size_cfg));
 
-            if usb.uesta0x.read().cfgok().bit_is_set() {
-                Ok(ep_addr)
-            } else {
-                Err(UsbError::Unsupported)
+            if usb.uesta0x.read().cfgok().bit_is_clear() {
+                return Err(UsbError::Unsupported);
             }
+
+            if ep_type == EndpointType::Control {
+                self.control_endpoints |= 1 << ep_addr.index();
+            }
+            Ok(ep_addr)
         })
     }
 
@@ -259,28 +268,32 @@ impl UsbBus for Usb {
             self.set_current_endpoint(cs, ep_addr)?;
             let usb = self.usb.borrow(cs);
 
-            if usb.ueintx.read().txini().bit_is_clear() {
-                return Err(UsbError::WouldBlock);
-            }
-
-            //NB: rxouti/killbk needs to stay zero:
-            usb.ueintx
-                .write_with_ones(|w| w.txini().clear_bit().rxouti().clear_bit());
-            let mut bytes_written = 0;
-            for &byte in buf {
-                if usb.ueintx.read().rwal().bit_is_clear() {
-                    return Err(UsbError::BufferOverflow);
+            if self.is_control_endpoint(ep_addr) {
+                todo!()
+            } else {
+                if usb.ueintx.read().txini().bit_is_clear() {
+                    return Err(UsbError::WouldBlock);
                 }
-                usb.uedatx.write(|w| w.bits(byte));
-                bytes_written += 1;
-            }
-            //NB: rxouti/killbk needs to stay zero:
-            usb.ueintx
-                .write_with_ones(|w| w.fifocon().clear_bit().rxouti().clear_bit());
 
-            let ep_in_complete = self.ep_in_complete.borrow(cs);
-            ep_in_complete.set(ep_in_complete.get() | 1 << ep_addr.index());
-            Ok(bytes_written)
+                //NB: rxouti/killbk needs to stay zero:
+                usb.ueintx
+                    .write_with_ones(|w| w.txini().clear_bit().rxouti().clear_bit());
+                let mut bytes_written = 0;
+                for &byte in buf {
+                    if usb.ueintx.read().rwal().bit_is_clear() {
+                        return Err(UsbError::BufferOverflow);
+                    }
+                    usb.uedatx.write(|w| w.bits(byte));
+                    bytes_written += 1;
+                }
+                //NB: rxouti/killbk needs to stay zero:
+                usb.ueintx
+                    .write_with_ones(|w| w.fifocon().clear_bit().rxouti().clear_bit());
+
+                let ep_in_complete = self.ep_in_complete.borrow(cs);
+                ep_in_complete.set(ep_in_complete.get() | 1 << ep_addr.index());
+                Ok(bytes_written)
+            }
         })
     }
 
@@ -289,24 +302,28 @@ impl UsbBus for Usb {
             self.set_current_endpoint(cs, ep_addr)?;
             let usb = self.usb.borrow(cs);
 
-            if usb.ueintx.read().rxouti().bit_is_clear() {
-                return Err(UsbError::WouldBlock);
-            }
-
-            usb.ueintx.write_with_ones(|w| w.rxouti().clear_bit());
-            let mut bytes_read = 0;
-            for slot in buf {
-                if usb.ueintx.read().rwal().bit_is_clear() {
-                    break;
+            if self.is_control_endpoint(ep_addr) {
+                todo!()
+            } else {
+                if usb.ueintx.read().rxouti().bit_is_clear() {
+                    return Err(UsbError::WouldBlock);
                 }
-                *slot = usb.uedatx.read().bits();
-                bytes_read += 1;
+
+                usb.ueintx.write_with_ones(|w| w.rxouti().clear_bit());
+                let mut bytes_read = 0;
+                for slot in buf {
+                    if usb.ueintx.read().rwal().bit_is_clear() {
+                        break;
+                    }
+                    *slot = usb.uedatx.read().bits();
+                    bytes_read += 1;
+                }
+                if usb.ueintx.read().rwal().bit_is_set() {
+                    return Err(UsbError::BufferOverflow);
+                }
+                usb.ueintx.write_with_ones(|w| w.fifocon().clear_bit());
+                Ok(bytes_read)
             }
-            if usb.ueintx.read().rwal().bit_is_set() {
-                return Err(UsbError::BufferOverflow);
-            }
-            usb.ueintx.write_with_ones(|w| w.fifocon().clear_bit());
-            Ok(bytes_read)
         })
     }
 
