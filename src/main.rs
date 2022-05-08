@@ -125,6 +125,7 @@ struct Usb {
     usb: Mutex<USB_DEVICE>,
     last_endpoint: u8,
     control_endpoints: u8,
+    pending_ins: Mutex<Cell<u8>>,
 }
 
 impl Usb {
@@ -136,6 +137,7 @@ impl Usb {
             usb: Mutex::new(usb),
             last_endpoint: 0,
             control_endpoints: 0,
+            pending_ins: Mutex::new(Cell::new(0)),
         })
     }
 
@@ -284,18 +286,13 @@ impl UsbBus for Usb {
             if self.is_control_endpoint(ep_addr) {
                 todo!()
             } else {
-                // If TXINI is still set for some reason, clear it.
-                //FIXME: if it was still set here, should we store a flag to
-                // know to return ep_in_complete on next poll?
+                if usb.ueintx.read().txini().bit_is_clear() {
+                    return Err(UsbError::WouldBlock);
+                }
 
                 //NB: rxouti/killbk needs to stay zero:
                 usb.ueintx
                     .write_with_ones(|w| w.txini().clear_bit().rxouti().clear_bit());
-
-                if usb.ueintx.read().rwal().bit_is_clear() {
-                    return Err(UsbError::WouldBlock);
-                }
-
                 let mut bytes_written = 0;
                 for &byte in buf {
                     if usb.ueintx.read().rwal().bit_is_clear() {
@@ -308,6 +305,8 @@ impl UsbBus for Usb {
                 usb.ueintx
                     .write_with_ones(|w| w.fifocon().clear_bit().rxouti().clear_bit());
 
+                let pending_ins = self.pending_ins.borrow(cs);
+                pending_ins.set(pending_ins.get() | 1 << ep_addr.index());
                 Ok(bytes_written)
             }
         })
@@ -397,6 +396,7 @@ impl UsbBus for Usb {
             let mut ep_out = 0u8;
             let mut ep_setup = 0u8;
             let mut ep_in_complete = 0u8;
+            let pending_ins = self.pending_ins.borrow(cs);
 
             for ep in 0..=self.last_endpoint {
                 let addr = EndpointAddress::from(ep);
@@ -409,11 +409,9 @@ impl UsbBus for Usb {
                 if ueintx.rxstpi().bit_is_set() {
                     ep_setup |= 1 << ep;
                 }
-                if ueintx.txini().bit_is_set() {
-                    //NB: rxouti/killbk needs to stay zero:
-                    usb.ueintx
-                        .write_with_ones(|w| w.txini().clear_bit().rxouti().clear_bit());
+                if pending_ins.get() & (1 << ep) != 0 && ueintx.txini().bit_is_set() {
                     ep_in_complete |= 1 << ep;
+                    pending_ins.set(pending_ins.get() & !(1 << ep));
                 }
             }
             if ep_out | ep_setup | ep_in_complete != 0 {
