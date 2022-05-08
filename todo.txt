@@ -1,2 +1,1 @@
 - Fix read&write routines for control (SETUP) endpoints
-- Can interrupt flags be set/cleared more safely with SBI/CBI?
