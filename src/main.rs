@@ -1,15 +1,9 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
+#![feature(lang_items)]
+#![feature(asm_experimental_arch)]
 
-extern crate avr_std_stub;
-
-#[no_mangle]
-#[cfg(not(test))]
-pub extern "C" fn main() {
-    main_inner();
-}
-
-use core::cell::Cell;
+use core::{arch::asm, cell::Cell, panic::PanicInfo};
 
 use atmega_hal::{
     pac::{
@@ -29,6 +23,56 @@ use usbd_hid::{
     descriptor::{KeyboardReport, SerializedDescriptor},
     hid_class::HIDClass,
 };
+
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    fn delay() {
+        // Hand-rolled 100ms delay - the avr-hal delay is acting strangely
+        unsafe {
+            asm!(
+                "ldi r25, 0xff",
+                "2:",
+                "ldi r26, 0xff",
+                "1:",
+                "subi r26, 1",
+                "brne 1b",
+                "subi r25, 1",
+                "brne 2b",
+                out("r25") _,
+                out("r26") _,
+            )
+        }
+    }
+    let dp = unsafe { Peripherals::steal() };
+    let pins = atmega_hal::pins!(dp);
+    let mut status = pins.pe6.into_output();
+    loop {
+        status.set_high();
+        delay();
+        status.set_low();
+        delay();
+        status.set_high();
+        delay();
+        delay();
+        delay();
+        status.set_low();
+        delay();
+        delay();
+        delay();
+        delay();
+        delay();
+    }
+}
+
+#[lang = "eh_personality"]
+#[no_mangle]
+pub unsafe extern "C" fn rust_eh_personality() -> () {}
+
+#[no_mangle]
+#[cfg(not(test))]
+pub extern "C" fn main() {
+    main_inner();
+}
 
 fn main_inner() {
     let dp = Peripherals::take().unwrap();

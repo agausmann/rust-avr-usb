@@ -37,12 +37,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "avr-std-stub"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "839920177137ff472f3c35abf5b8166f331c6cf7f2dfa7ffd69f9aa7dc70b526"
-
-[[package]]
 name = "bare-metal"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -136,7 +130,6 @@ version = "0.1.0"
 dependencies = [
  "atmega-hal",
  "avr-device",
- "avr-std-stub",
  "usb-device",
  "usbd-hid",
 ]
