@@ -409,12 +409,9 @@ impl UsbBus for Usb {
                 if ueintx.rxstpi().bit_is_set() {
                     ep_setup |= 1 << ep;
                 }
-
-                if pending_ins.get() & (1 << ep) != 0 {
-                    if self.endpoint_byte_count(cs) == 0 {
-                        ep_in_complete |= 1 << ep;
-                        pending_ins.set(pending_ins.get() & !(1 << ep));
-                    }
+                if pending_ins.get() & (1 << ep) != 0 && ueintx.txini().bit_is_set() {
+                    ep_in_complete |= 1 << ep;
+                    pending_ins.set(pending_ins.get() & !(1 << ep));
                 }
             }
             if ep_out | ep_setup | ep_in_complete != 0 {
