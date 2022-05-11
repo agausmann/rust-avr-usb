@@ -13,4 +13,4 @@ set -e
 objcopy -O ihex "$BINFILE" "$BINFILE.hex"
 sudo dfu-programmer "$MCU" erase
 sudo dfu-programmer "$MCU" flash "$BINFILE.hex"
-sudo dfu-programmer "$MCU" reset
+sudo dfu-programmer "$MCU" launch --no-reset

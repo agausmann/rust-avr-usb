@@ -10,13 +10,14 @@ use atmega_hal::{
         usb_device::{udint, ueintx, UDINT, UEINTX},
         USB_DEVICE,
     },
+    port::{mode::Output, Pin},
     Peripherals,
 };
 use avr_device::interrupt::{free as interrupt_free, CriticalSection, Mutex};
 use usb_device::{
     bus::PollResult,
     class_prelude::{EndpointAddress, EndpointType, UsbBus, UsbBusAllocator},
-    device::{UsbDeviceBuilder, UsbDeviceState, UsbVidPid},
+    device::{UsbDeviceBuilder, UsbVidPid},
     UsbDirection, UsbError,
 };
 use usbd_hid::{
@@ -74,6 +75,16 @@ pub extern "C" fn main() {
     main_inner();
 }
 
+static mut INDICATOR: Option<Pin<Output>> = None;
+
+fn trace() {
+    unsafe {
+        if let Some(ind) = &mut INDICATOR {
+            ind.set_high();
+        }
+    }
+}
+
 fn main_inner() {
     let dp = Peripherals::take().unwrap();
     let pins = atmega_hal::pins!(dp);
@@ -81,17 +92,25 @@ fn main_inner() {
     let usb = dp.USB_DEVICE;
 
     let mut status = pins.pe6.into_output();
-    let mut indicator = pins.pb7.into_output();
+    let indicator = pins.pb7.into_output();
+
+    unsafe { INDICATOR = Some(indicator.downgrade()) };
+
+    usb.usbcon.reset();
+    usb.uhwcon.reset();
+    usb.udcon.reset();
+    usb.udien.reset();
 
     // Power-On USB pads regulator
     usb.uhwcon.modify(|_, w| w.uvrege().set_bit());
+    usb.usbcon.modify(|_, w| w.otgpade().set_bit());
 
     // Configure PLL interface
     // prescale 16MHz crystal -> 8MHz
-    pll.pllcsr.modify(|_, w| w.pindiv().set_bit());
+    pll.pllcsr.write(|w| w.pindiv().set_bit());
     // 96MHz PLL output; /1.5 for 64MHz timers, /2 for 48MHz USB
     pll.pllfrq
-        .modify(|_, w| w.pdiv().mhz96().plltm().factor_15().pllusb().set_bit());
+        .write(|w| w.pdiv().mhz96().plltm().factor_15().pllusb().set_bit());
 
     // Enable PLL
     pll.pllcsr.modify(|_, w| w.plle().set_bit());
@@ -99,9 +118,11 @@ fn main_inner() {
     // Check PLL lock
     while pll.pllcsr.read().plock().bit_is_clear() {}
 
+    status.set_high();
+
     let usb_bus = Usb::new(usb);
 
-    let mut hid_class = HIDClass::new(&usb_bus, KeyboardReport::desc(), 1);
+    // let mut hid_class = HIDClass::new(&usb_bus, KeyboardReport::desc(), 1);
     let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0xf667, 0x2012))
         .manufacturer("Foo")
         .product("Bar")
@@ -112,10 +133,7 @@ fn main_inner() {
     status.set_high();
 
     loop {
-        usb_device.poll(&mut [&mut hid_class]);
-        if usb_device.state() == UsbDeviceState::Addressed {
-            indicator.set_high();
-        }
+        usb_device.poll(&mut []);
     }
 }
 
@@ -126,18 +144,21 @@ struct Usb {
     last_endpoint: u8,
     control_endpoints: u8,
     pending_ins: Mutex<Cell<u8>>,
+    is_suspended: Mutex<Cell<bool>>,
 }
 
 impl Usb {
     fn new(usb: USB_DEVICE) -> UsbBusAllocator<Self> {
+        // NB: FRZCLK cannot be configured at the same time as USB
         usb.usbcon.modify(|_, w| w.usbe().set_bit());
-        usb.udcon.modify(|_, w| w.lsm().clear_bit());
+        usb.usbcon.modify(|_, w| w.frzclk().clear_bit());
 
         UsbBusAllocator::new(Self {
             usb: Mutex::new(usb),
             last_endpoint: 0,
             control_endpoints: 0,
             pending_ins: Mutex::new(Cell::new(0)),
+            is_suspended: Mutex::new(Cell::new(false)),
         })
     }
 
@@ -147,7 +168,7 @@ impl Usb {
         addr: EndpointAddress,
     ) -> usb_device::Result<()> {
         let addr = addr.index();
-        if addr <= self.last_endpoint as usize {
+        if addr > self.last_endpoint as usize {
             return Err(UsbError::InvalidEndpoint);
         }
         self.usb
@@ -159,6 +180,13 @@ impl Usb {
 
     fn is_control_endpoint(&self, addr: EndpointAddress) -> bool {
         self.control_endpoints & (1 << addr.index()) != 0
+    }
+
+    fn endpoint_buffer_size(&self, cs: &CriticalSection) -> u16 {
+        let usb = self.usb.borrow(cs);
+        // 0 => 2^3, 1 => 2^4, etc
+        let bits = usb.uecfg1x.read().epsize().bits() + 3;
+        1 << bits
     }
 
     fn endpoint_byte_count(&self, cs: &CriticalSection) -> u16 {
@@ -238,7 +266,7 @@ impl UsbBus for Usb {
             self.set_current_endpoint(cs, ep_addr)?;
             let usb = self.usb.borrow(cs);
 
-            if usb.ueconx.read().epen().bit_is_set() {
+            if ep_addr.index() != 0 && usb.ueconx.read().epen().bit_is_set() {
                 return Err(UsbError::Unsupported);
             }
             usb.ueconx.write(|w| w.epen().set_bit());
@@ -246,7 +274,8 @@ impl UsbBus for Usb {
             usb.uecfg0x
                 .write(|w| w.epdir().bit(dir_cfg).eptype().bits(type_cfg));
             usb.uecfg1x
-                .write(|w| w.alloc().set_bit().epbk().bits(0).epsize().bits(size_cfg));
+                .write(|w| w.epbk().bits(0).epsize().bits(size_cfg));
+            usb.uecfg1x.modify(|_, w| w.alloc().set_bit());
 
             if usb.uesta0x.read().cfgok().bit_is_clear() {
                 return Err(UsbError::Unsupported);
@@ -284,7 +313,18 @@ impl UsbBus for Usb {
             let usb = self.usb.borrow(cs);
 
             if self.is_control_endpoint(ep_addr) {
-                todo!()
+                if usb.ueintx.read().txini().bit_is_clear() {
+                    return Err(UsbError::WouldBlock);
+                }
+                let buffer_size = self.endpoint_buffer_size(cs) as usize;
+                if buf.len() > buffer_size {
+                    return Err(UsbError::BufferOverflow);
+                }
+                for &byte in buf {
+                    usb.uedatx.write(|w| unsafe { w.bits(byte) })
+                }
+                usb.ueintx.write_with_ones(|w| w.txini().clear_bit());
+                Ok(buf.len())
             } else {
                 if usb.ueintx.read().txini().bit_is_clear() {
                     return Err(UsbError::WouldBlock);
@@ -293,13 +333,11 @@ impl UsbBus for Usb {
                 //NB: rxouti/killbk needs to stay zero:
                 usb.ueintx
                     .write_with_ones(|w| w.txini().clear_bit().rxouti().clear_bit());
-                let mut bytes_written = 0;
                 for &byte in buf {
                     if usb.ueintx.read().rwal().bit_is_clear() {
                         return Err(UsbError::BufferOverflow);
                     }
-                    usb.uedatx.write(|w| w.bits(byte));
-                    bytes_written += 1;
+                    usb.uedatx.write(|w| unsafe { w.bits(byte) });
                 }
                 //NB: rxouti/killbk needs to stay zero:
                 usb.ueintx
@@ -307,7 +345,7 @@ impl UsbBus for Usb {
 
                 let pending_ins = self.pending_ins.borrow(cs);
                 pending_ins.set(pending_ins.get() | 1 << ep_addr.index());
-                Ok(bytes_written)
+                Ok(buf.len())
             }
         })
     }
@@ -318,7 +356,25 @@ impl UsbBus for Usb {
             let usb = self.usb.borrow(cs);
 
             if self.is_control_endpoint(ep_addr) {
-                todo!()
+                let ueintx = usb.ueintx.read();
+                if ueintx.rxouti().bit_is_clear() && ueintx.rxstpi().bit_is_clear() {
+                    return Err(UsbError::WouldBlock);
+                }
+                let bytes_to_read = self.endpoint_byte_count(cs) as usize;
+                if bytes_to_read > buf.len() {
+                    return Err(UsbError::BufferOverflow);
+                }
+                for slot in &mut buf[..bytes_to_read] {
+                    *slot = usb.uedatx.read().bits();
+                }
+                if ueintx.rxstpi().bit_is_set() {
+                    usb.ueintx.write(|w| w.rxstpi().clear_bit());
+                } else if ueintx.rxouti().bit_is_set() {
+                    usb.ueintx.write(|w| w.rxouti().clear_bit());
+                }
+                usb.ueintx
+                    .write(|w| w.rxouti().clear_bit().rxstpi().clear_bit());
+                Ok(bytes_to_read)
             } else {
                 if usb.ueintx.read().rxouti().bit_is_clear() {
                     return Err(UsbError::WouldBlock);
@@ -368,6 +424,7 @@ impl UsbBus for Usb {
             let usb = self.usb.borrow(cs);
             usb.udint.write_with_ones(|w| w.suspi().clear_bit());
             usb.usbcon.modify(|_, w| w.frzclk().set_bit());
+            self.is_suspended.borrow(cs).set(true);
             //TODO disable PLL?
         });
     }
@@ -378,6 +435,7 @@ impl UsbBus for Usb {
             //TODO enable PLL?
             usb.usbcon.modify(|_, w| w.frzclk().clear_bit());
             usb.udint.write_with_ones(|w| w.wakeupi().clear_bit());
+            self.is_suspended.borrow(cs).set(false);
         });
     }
 
@@ -386,10 +444,11 @@ impl UsbBus for Usb {
             let usb = self.usb.borrow(cs);
 
             let udint = usb.udint.read();
-            if udint.suspi().bit_is_set() {
+            let is_suspended = self.is_suspended.borrow(cs).get();
+            if udint.suspi().bit_is_set() && !is_suspended {
                 return PollResult::Suspend;
             }
-            if udint.wakeupi().bit_is_set() {
+            if udint.wakeupi().bit_is_set() && is_suspended {
                 return PollResult::Resume;
             }
 
