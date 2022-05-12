@@ -2,6 +2,7 @@
 #![cfg_attr(not(test), no_main)]
 #![feature(lang_items)]
 #![feature(asm_experimental_arch)]
+#![feature(abi_avr_interrupt)]
 
 use core::{arch::asm, cell::Cell, panic::PanicInfo};
 
@@ -290,14 +291,20 @@ impl UsbBus for Usb {
 
     fn enable(&mut self) {
         interrupt_free(|cs| {
-            self.usb
-                .borrow(cs)
-                .udcon
-                .modify(|_, w| w.detach().clear_bit());
+            let usb = self.usb.borrow(cs);
+            usb.udcon.modify(|_, w| w.detach().clear_bit());
         })
     }
 
-    fn reset(&self) {}
+    fn reset(&self) {
+        interrupt_free(|cs| {
+            self.set_current_endpoint(cs, EndpointAddress::from(0))
+                .unwrap();
+            let usb = self.usb.borrow(cs);
+            usb.ueconx.modify(|_, w| w.epen().set_bit());
+            usb.udint.modify(|_, w| w.eorsti().clear_bit());
+        })
+    }
 
     fn set_device_address(&self, addr: u8) {
         interrupt_free(|cs| {
@@ -422,7 +429,8 @@ impl UsbBus for Usb {
     fn suspend(&self) {
         interrupt_free(|cs| {
             let usb = self.usb.borrow(cs);
-            usb.udint.write_with_ones(|w| w.suspi().clear_bit());
+            usb.udint
+                .write_with_ones(|w| w.suspi().clear_bit().wakeupi().clear_bit());
             usb.usbcon.modify(|_, w| w.frzclk().set_bit());
             self.is_suspended.borrow(cs).set(true);
             //TODO disable PLL?
@@ -434,7 +442,8 @@ impl UsbBus for Usb {
             let usb = self.usb.borrow(cs);
             //TODO enable PLL?
             usb.usbcon.modify(|_, w| w.frzclk().clear_bit());
-            usb.udint.write_with_ones(|w| w.wakeupi().clear_bit());
+            usb.udint
+                .write_with_ones(|w| w.wakeupi().clear_bit().suspi().clear_bit());
             self.is_suspended.borrow(cs).set(false);
         });
     }
@@ -451,6 +460,9 @@ impl UsbBus for Usb {
             if udint.wakeupi().bit_is_set() && is_suspended {
                 return PollResult::Resume;
             }
+            if udint.eorsti().bit_is_set() {
+                return PollResult::Reset;
+            }
 
             let mut ep_out = 0u8;
             let mut ep_setup = 0u8;
@@ -466,6 +478,7 @@ impl UsbBus for Usb {
                     ep_out |= 1 << ep;
                 }
                 if ueintx.rxstpi().bit_is_set() {
+                    trace();
                     ep_setup |= 1 << ep;
                 }
                 if pending_ins.get() & (1 << ep) != 0 && ueintx.txini().bit_is_set() {

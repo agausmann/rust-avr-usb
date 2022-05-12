@@ -17,10 +17,22 @@ version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7c1cef04ede70192080e05c3e1b5d97a2ab97ebde41145f7444600fc29dd5b"
 dependencies = [
+ "avr-device-macros",
  "bare-metal",
  "cfg-if",
  "rustversion",
  "vcell",
+]
+
+[[package]]
+name = "avr-device-macros"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab3dba70559ee3562230a75ce7839c30bfb257052930458cc920577c89b95eda"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

@@ -8,7 +8,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-avr-device = "0.3.3"
+avr-device = { version = "0.3.3", features = ["rt"] }
 usb-device = "0.2"
 usbd-hid = "0.6"
 
