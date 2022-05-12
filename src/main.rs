@@ -77,11 +77,15 @@ pub extern "C" fn main() {
 }
 
 static mut INDICATOR: Option<Pin<Output>> = None;
+static mut COUNT: u8 = 0;
 
 fn trace() {
     unsafe {
-        if let Some(ind) = &mut INDICATOR {
-            ind.set_high();
+        COUNT += 1;
+        if COUNT == 1 {
+            if let Some(ind) = &mut INDICATOR {
+                ind.set_high();
+            }
         }
     }
 }
@@ -127,7 +131,7 @@ fn main_inner() {
     let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0xf667, 0x2012))
         .manufacturer("Foo")
         .product("Bar")
-        .device_class(0xef)
+        .device_class(0xff)
         .max_power(500)
         .build();
 
@@ -331,6 +335,8 @@ impl UsbBus for Usb {
                     usb.uedatx.write(|w| unsafe { w.bits(byte) })
                 }
                 usb.ueintx.write_with_ones(|w| w.txini().clear_bit());
+                let pending_ins = self.pending_ins.borrow(cs);
+                pending_ins.set(pending_ins.get() | 1 << ep_addr.index());
                 Ok(buf.len())
             } else {
                 if usb.ueintx.read().txini().bit_is_clear() {
@@ -379,8 +385,6 @@ impl UsbBus for Usb {
                 } else if ueintx.rxouti().bit_is_set() {
                     usb.ueintx.write(|w| w.rxouti().clear_bit());
                 }
-                usb.ueintx
-                    .write(|w| w.rxouti().clear_bit().rxstpi().clear_bit());
                 Ok(bytes_to_read)
             } else {
                 if usb.ueintx.read().rxouti().bit_is_clear() {
@@ -478,10 +482,10 @@ impl UsbBus for Usb {
                     ep_out |= 1 << ep;
                 }
                 if ueintx.rxstpi().bit_is_set() {
-                    trace();
                     ep_setup |= 1 << ep;
                 }
                 if pending_ins.get() & (1 << ep) != 0 && ueintx.txini().bit_is_set() {
+                    trace();
                     ep_in_complete |= 1 << ep;
                     pending_ins.set(pending_ins.get() & !(1 << ep));
                 }
