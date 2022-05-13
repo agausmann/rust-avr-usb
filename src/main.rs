@@ -89,7 +89,7 @@ fn main_inner() {
     status.set_high();
 
     let usb_bus = UsbBus::new(usb);
-    // let mut hid_class = HIDClass::new(&usb_bus, KeyboardReport::desc(), 1);
+    let mut hid_class = HIDClass::new(&usb_bus, KeyboardReport::desc(), 1);
     let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0xf667, 0x2012))
         .manufacturer("Foo")
         .product("Bar")
@@ -99,10 +99,43 @@ fn main_inner() {
 
     status.set_high();
 
+    // let mut next_char = 0;
+
     loop {
-        usb_device.poll(&mut []);
-        if usb_device.state() == UsbDeviceState::Configured {
-            indicator.set_high();
+        if usb_device.poll(&mut [&mut hid_class]) {
+            // let report = if let Some(c) = PAYLOAD.get(next_char) {
+            //     next_char += 1;
+            //     ascii_to_keycode(*c)
+            // } else {
+            //     indicator.set_high();
+            //     KeyboardReport {
+            //         modifier: 0,
+            //         reserved: 0,
+            //         leds: 0,
+            //         keycodes: [0; 6],
+            //     }
+            // };
+            // hid_class.push_input(&report);
         }
     }
 }
+
+// const PAYLOAD: &[u8] = b"Hello World!";
+
+// fn ascii_to_keycode(b: u8) -> KeyboardReport {
+//     let (shift, keycode) = if b.is_ascii_alphabetic() {
+//         (b.is_ascii_uppercase(), b.to_ascii_lowercase() - b'a' + 0x04)
+//     } else {
+//         match b {
+//             b' ' => (false, 0x2c),
+//             b'!' => (true, 0x1e),
+//             _ => unimplemented!(),
+//         }
+//     };
+//     KeyboardReport {
+//         modifier: if shift { 2 } else { 0 },
+//         reserved: 0,
+//         leds: 0,
+//         keycodes: [keycode, 0, 0, 0, 0, 0],
+//     }
+// }
