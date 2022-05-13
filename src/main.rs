@@ -85,8 +85,6 @@ fn main_inner() {
     // Check PLL lock
     while pll.pllcsr.read().plock().bit_is_clear() {}
 
-    status.set_high();
-
     let usb_bus = UsbBus::new(usb);
     let mut hid_class = HIDClass::new(&usb_bus, KeyboardReport::desc(), 1);
     let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
