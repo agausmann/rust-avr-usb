@@ -14,6 +14,7 @@ dependencies = [
 [[package]]
 name = "atmega-usbd"
 version = "0.1.0"
+source = "git+https://github.com/agausmann/atmega-usbd.git#42bfe2353c40db4f4e954f53bd436c429d9a5a1f"
 dependencies = [
  "atmega-hal",
  "avr-device",
