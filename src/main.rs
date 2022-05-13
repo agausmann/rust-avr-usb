@@ -90,7 +90,7 @@ fn main_inner() {
 
     let usb_bus = UsbBus::new(usb);
     let mut hid_class = HIDClass::new(&usb_bus, KeyboardReport::desc(), 1);
-    let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0xf667, 0x2012))
+    let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
         .manufacturer("Foo")
         .product("Bar")
         .device_class(0xff)
