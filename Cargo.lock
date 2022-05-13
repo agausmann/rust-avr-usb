@@ -5,10 +5,19 @@ version = 3
 [[package]]
 name = "atmega-hal"
 version = "0.1.0"
-source = "git+https://github.com/agausmann/avr-hal.git?branch=patch/kbforge#6b787d5835337cbb30bc09d7fb6454b3c602027b"
+source = "git+https://github.com/rahix/avr-hal.git#f64fdb7e7da351c9f4e346eb338c7599d936a7c6"
 dependencies = [
  "avr-device",
  "avr-hal-generic",
+]
+
+[[package]]
+name = "atmega-usbd"
+version = "0.1.0"
+dependencies = [
+ "atmega-hal",
+ "avr-device",
+ "usb-device",
 ]
 
 [[package]]
@@ -17,7 +26,6 @@ version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7c1cef04ede70192080e05c3e1b5d97a2ab97ebde41145f7444600fc29dd5b"
 dependencies = [
- "avr-device-macros",
  "bare-metal",
  "cfg-if",
  "rustversion",
@@ -25,20 +33,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "avr-device-macros"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab3dba70559ee3562230a75ce7839c30bfb257052930458cc920577c89b95eda"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "avr-hal-generic"
 version = "0.1.0"
-source = "git+https://github.com/agausmann/avr-hal.git?branch=patch/kbforge#6b787d5835337cbb30bc09d7fb6454b3c602027b"
+source = "git+https://github.com/rahix/avr-hal.git#f64fdb7e7da351c9f4e346eb338c7599d936a7c6"
 dependencies = [
  "avr-device",
  "cfg-if",
@@ -143,7 +140,7 @@ name = "rust-avr-usb"
 version = "0.1.0"
 dependencies = [
  "atmega-hal",
- "avr-device",
+ "atmega-usbd",
  "usb-device",
  "usbd-hid",
 ]
