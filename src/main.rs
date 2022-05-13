@@ -8,7 +8,7 @@ use core::{arch::asm, panic::PanicInfo};
 
 use atmega_hal::Peripherals;
 use atmega_usbd::UsbBus;
-use usb_device::device::{UsbDeviceBuilder, UsbDeviceState, UsbVidPid};
+use usb_device::device::{UsbDeviceBuilder, UsbVidPid};
 use usbd_hid::{
     descriptor::{KeyboardReport, SerializedDescriptor},
     hid_class::HIDClass,
@@ -71,7 +71,6 @@ fn main_inner() {
     let usb = dp.USB_DEVICE;
 
     let mut status = pins.pe6.into_output();
-    let mut indicator = pins.pb7.into_output();
 
     // Configure PLL interface
     // prescale 16MHz crystal -> 8MHz
@@ -93,49 +92,21 @@ fn main_inner() {
     let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
         .manufacturer("Foo")
         .product("Bar")
-        .device_class(0xff)
-        .max_power(500)
+        .device_class(0xef)
         .build();
 
     status.set_high();
 
-    // let mut next_char = 0;
-
     loop {
         if usb_device.poll(&mut [&mut hid_class]) {
-            // let report = if let Some(c) = PAYLOAD.get(next_char) {
-            //     next_char += 1;
-            //     ascii_to_keycode(*c)
-            // } else {
-            //     indicator.set_high();
-            //     KeyboardReport {
-            //         modifier: 0,
-            //         reserved: 0,
-            //         leds: 0,
-            //         keycodes: [0; 6],
-            //     }
-            // };
-            // hid_class.push_input(&report);
+            hid_class
+                .push_input(&KeyboardReport {
+                    modifier: 2, // shift
+                    reserved: 0,
+                    leds: 0,
+                    keycodes: [0x0b, 0, 0, 0, 0, 0], // H
+                })
+                .ok();
         }
     }
 }
-
-// const PAYLOAD: &[u8] = b"Hello World!";
-
-// fn ascii_to_keycode(b: u8) -> KeyboardReport {
-//     let (shift, keycode) = if b.is_ascii_alphabetic() {
-//         (b.is_ascii_uppercase(), b.to_ascii_lowercase() - b'a' + 0x04)
-//     } else {
-//         match b {
-//             b' ' => (false, 0x2c),
-//             b'!' => (true, 0x1e),
-//             _ => unimplemented!(),
-//         }
-//     };
-//     KeyboardReport {
-//         modifier: if shift { 2 } else { 0 },
-//         reserved: 0,
-//         leds: 0,
-//         keycodes: [keycode, 0, 0, 0, 0, 0],
-//     }
-// }
