@@ -1,7 +1,6 @@
 # rust-avr-usb
 
-## WORK IN PROGRESS
+An example embedded firmware using [atmega-usbd](https://github.com/agausmann/atmega-usbd).
 
-This is an experiment to test the viability of Rust's usb-device ecosystem on
-AVR targets. This is likely very unstable and is not intended to be used in
-production. 
+Use at your own risk! There are some platform-specific details in here; make
+sure you adapt this to your own platform (e.g. status LED and clock configuration)
