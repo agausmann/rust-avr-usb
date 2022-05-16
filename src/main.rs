@@ -1,14 +1,13 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 #![feature(lang_items)]
-#![feature(asm_experimental_arch)]
 #![feature(abi_avr_interrupt)]
 
-use core::{arch::asm, panic::PanicInfo};
+use core::panic::PanicInfo;
 
-use atmega_hal::Peripherals;
+use arduino_hal::{delay_ms, pins, Peripherals};
 use atmega_usbd::UsbBus;
-use usb_device::device::{UsbDeviceBuilder, UsbVidPid};
+use usb_device::device::{UsbDeviceBuilder, UsbDeviceState, UsbVidPid};
 use usbd_hid::{
     descriptor::{KeyboardReport, SerializedDescriptor},
     hid_class::HIDClass,
@@ -16,41 +15,18 @@ use usbd_hid::{
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    fn delay() {
-        // Hand-rolled 100ms delay - the avr-hal delay is acting strangely
-        unsafe {
-            asm!(
-                "ldi r25, 0xff",
-                "2:",
-                "ldi r26, 0xff",
-                "1:",
-                "subi r26, 1",
-                "brne 1b",
-                "subi r25, 1",
-                "brne 2b",
-                out("r25") _,
-                out("r26") _,
-            )
-        }
-    }
     let dp = unsafe { Peripherals::steal() };
-    let pins = atmega_hal::pins!(dp);
-    let mut status = pins.pe6.into_output();
+    let pins = pins!(dp);
+    let mut status = pins.d13.into_output();
     loop {
         status.set_high();
-        delay();
+        delay_ms(100);
         status.set_low();
-        delay();
+        delay_ms(100);
         status.set_high();
-        delay();
-        delay();
-        delay();
+        delay_ms(300);
         status.set_low();
-        delay();
-        delay();
-        delay();
-        delay();
-        delay();
+        delay_ms(500);
     }
 }
 
@@ -66,11 +42,19 @@ pub extern "C" fn main() {
 
 fn main_inner() {
     let dp = Peripherals::take().unwrap();
-    let pins = atmega_hal::pins!(dp);
+    let pins = pins!(dp);
     let pll = dp.PLL;
     let usb = dp.USB_DEVICE;
 
-    let mut status = pins.pe6.into_output();
+    let mut status = pins.d13.into_output();
+    let mut ind0 = pins.d2.into_output();
+    let mut ind1 = pins.d3.into_output();
+    // let mut ind2 = pins.d4.into_output();
+    // let mut ind3 = pins.d5.into_output();
+    // let mut ind4 = pins.d6.into_output();
+    // let mut ind5 = pins.d7.into_output();
+    // let mut ind6 = pins.d8.into_output();
+    // let mut ind7 = pins.d9.into_output();
 
     // Configure PLL interface
     // prescale 16MHz crystal -> 8MHz
@@ -96,15 +80,25 @@ fn main_inner() {
     status.set_high();
 
     loop {
-        if usb_device.poll(&mut [&mut hid_class]) {
-            hid_class
-                .push_input(&KeyboardReport {
-                    modifier: 2, // shift
-                    reserved: 0,
-                    leds: 0,
-                    keycodes: [0x0b, 0, 0, 0, 0, 0], // H
-                })
-                .ok();
+        if usb_device.poll(&mut [&mut hid_class]) {}
+
+        match usb_device.state() {
+            UsbDeviceState::Default => {
+                ind0.set_low();
+                ind1.set_low();
+            }
+            UsbDeviceState::Addressed => {
+                ind0.set_high();
+                ind1.set_low();
+            }
+            UsbDeviceState::Configured => {
+                ind0.set_low();
+                ind1.set_high();
+            }
+            UsbDeviceState::Suspend => {
+                ind0.set_high();
+                ind1.set_high();
+            }
         }
     }
 }

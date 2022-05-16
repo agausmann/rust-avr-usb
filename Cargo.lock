@@ -3,6 +3,20 @@
 version = 3
 
 [[package]]
+name = "arduino-hal"
+version = "0.1.0"
+source = "git+https://github.com/rahix/avr-hal.git#f64fdb7e7da351c9f4e346eb338c7599d936a7c6"
+dependencies = [
+ "atmega-hal",
+ "avr-device",
+ "avr-hal-generic",
+ "cfg-if 1.0.0",
+ "embedded-hal",
+ "ufmt",
+ "void",
+]
+
+[[package]]
 name = "atmega-hal"
 version = "0.1.0"
 source = "git+https://github.com/rahix/avr-hal.git#f64fdb7e7da351c9f4e346eb338c7599d936a7c6"
@@ -14,9 +28,8 @@ dependencies = [
 [[package]]
 name = "atmega-usbd"
 version = "0.1.0"
-source = "git+https://github.com/agausmann/atmega-usbd.git#42bfe2353c40db4f4e954f53bd436c429d9a5a1f"
+source = "git+https://github.com/agausmann/atmega-usbd.git#3a9ac1ca37383ff65cb091b8e7f0c5bf1be3fb47"
 dependencies = [
- "atmega-hal",
  "avr-device",
  "usb-device",
 ]
@@ -27,10 +40,22 @@ version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7c1cef04ede70192080e05c3e1b5d97a2ab97ebde41145f7444600fc29dd5b"
 dependencies = [
+ "avr-device-macros",
  "bare-metal",
- "cfg-if",
+ "cfg-if 0.1.10",
  "rustversion",
  "vcell",
+]
+
+[[package]]
+name = "avr-device-macros"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab3dba70559ee3562230a75ce7839c30bfb257052930458cc920577c89b95eda"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -39,7 +64,7 @@ version = "0.1.0"
 source = "git+https://github.com/rahix/avr-hal.git#f64fdb7e7da351c9f4e346eb338c7599d936a7c6"
 dependencies = [
  "avr-device",
- "cfg-if",
+ "cfg-if 0.1.10",
  "embedded-hal",
  "nb 0.1.3",
  "paste",
@@ -74,6 +99,12 @@ name = "cfg-if"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
+
+[[package]]
+name = "cfg-if"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "embedded-hal"
@@ -140,7 +171,7 @@ dependencies = [
 name = "rust-avr-usb"
 version = "0.1.0"
 dependencies = [
- "atmega-hal",
+ "arduino-hal",
  "atmega-usbd",
  "usb-device",
  "usbd-hid",

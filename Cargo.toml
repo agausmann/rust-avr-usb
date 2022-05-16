@@ -11,9 +11,9 @@ edition = "2021"
 usb-device = "0.2"
 usbd-hid = "0.6"
 
-[dependencies.atmega-hal]
+[dependencies.arduino-hal]
 git = "https://github.com/rahix/avr-hal.git"
-features = ["atmega32u4"]
+features = ["arduino-leonardo"]
 
 [dependencies.atmega-usbd]
 git = "https://github.com/agausmann/atmega-usbd.git"

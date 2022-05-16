@@ -2,7 +2,7 @@
 target = "avr-atmega32u4.json"
 
 [target.'cfg(target_arch = "avr")']
-runner = ["./dfu-flash.sh", "atmega32u4"]
+runner = ["ravedude", "leonardo"]
 
 [unstable]
 build-std = ["core"]
