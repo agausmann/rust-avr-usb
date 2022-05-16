@@ -47,14 +47,6 @@ fn main_inner() {
     let usb = dp.USB_DEVICE;
 
     let mut status = pins.d13.into_output();
-    let mut ind0 = pins.d2.into_output();
-    let mut ind1 = pins.d3.into_output();
-    // let mut ind2 = pins.d4.into_output();
-    // let mut ind3 = pins.d5.into_output();
-    // let mut ind4 = pins.d6.into_output();
-    // let mut ind5 = pins.d7.into_output();
-    // let mut ind6 = pins.d8.into_output();
-    // let mut ind7 = pins.d9.into_output();
 
     // Configure PLL interface
     // prescale 16MHz crystal -> 8MHz
@@ -77,27 +69,16 @@ fn main_inner() {
         .device_class(0xef)
         .build();
 
-    status.set_high();
+    let mut report_buf = [0u8; 1];
 
     loop {
-        if usb_device.poll(&mut [&mut hid_class]) {}
-
-        match usb_device.state() {
-            UsbDeviceState::Default => {
-                ind0.set_low();
-                ind1.set_low();
-            }
-            UsbDeviceState::Addressed => {
-                ind0.set_high();
-                ind1.set_low();
-            }
-            UsbDeviceState::Configured => {
-                ind0.set_low();
-                ind1.set_high();
-            }
-            UsbDeviceState::Suspend => {
-                ind0.set_high();
-                ind1.set_high();
+        if usb_device.poll(&mut [&mut hid_class]) {
+            if hid_class.pull_raw_output(&mut report_buf).is_ok() {
+                if report_buf[0] & 2 != 0 {
+                    status.set_high();
+                } else {
+                    status.set_low();
+                }
             }
         }
     }
