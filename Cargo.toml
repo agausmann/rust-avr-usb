@@ -16,8 +16,8 @@ git = "https://github.com/rahix/avr-hal.git"
 features = ["arduino-leonardo"]
 
 [dependencies.atmega-usbd]
-git = "https://github.com/agausmann/atmega-usbd.git"
-# path = "../atmega-usbd"
+# git = "https://github.com/agausmann/atmega-usbd.git"
+path = "../atmega-usbd"
 
 [profile.dev]
 opt-level = "s"

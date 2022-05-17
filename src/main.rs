@@ -7,7 +7,7 @@ use core::panic::PanicInfo;
 
 use arduino_hal::{delay_ms, pins, Peripherals};
 use atmega_usbd::UsbBus;
-use usb_device::device::{UsbDeviceBuilder, UsbDeviceState, UsbVidPid};
+use usb_device::device::{UsbDeviceBuilder, UsbVidPid};
 use usbd_hid::{
     descriptor::{KeyboardReport, SerializedDescriptor},
     hid_class::HIDClass,
@@ -47,6 +47,7 @@ fn main_inner() {
     let usb = dp.USB_DEVICE;
 
     let mut status = pins.d13.into_output();
+    let trigger = pins.d2.into_pull_up_input();
 
     // Configure PLL interface
     // prescale 16MHz crystal -> 8MHz
@@ -66,12 +67,39 @@ fn main_inner() {
     let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
         .manufacturer("Foo")
         .product("Bar")
-        .device_class(0xef)
         .build();
 
     let mut report_buf = [0u8; 1];
+    let mut index = 0;
 
     loop {
+        if trigger.is_low() {
+            if let Some(report) = PAYLOAD.get(index).copied().and_then(ascii_to_report) {
+                if hid_class.push_input(&report).is_ok() {
+                    index += 1;
+                }
+            } else {
+                hid_class
+                    .push_input(&KeyboardReport {
+                        modifier: 0,
+                        reserved: 0,
+                        leds: 0,
+                        keycodes: [0; 6],
+                    })
+                    .ok();
+            }
+        } else {
+            index = 0;
+            hid_class
+                .push_input(&KeyboardReport {
+                    modifier: 0,
+                    reserved: 0,
+                    leds: 0,
+                    keycodes: [0; 6],
+                })
+                .ok();
+        }
+
         if usb_device.poll(&mut [&mut hid_class]) {
             if hid_class.pull_raw_output(&mut report_buf).is_ok() {
                 if report_buf[0] & 2 != 0 {
@@ -82,4 +110,24 @@ fn main_inner() {
             }
         }
     }
+}
+
+const PAYLOAD: &[u8] = b"Hello World";
+
+fn ascii_to_report(c: u8) -> Option<KeyboardReport> {
+    let (keycode, shift) = if c.is_ascii_alphabetic() {
+        (c.to_ascii_lowercase() - b'a' + 0x04, c.is_ascii_uppercase())
+    } else {
+        match c {
+            b' ' => (0x2c, false),
+            _ => return None,
+        }
+    };
+
+    Some(KeyboardReport {
+        modifier: if shift { 2 } else { 0 },
+        reserved: 0,
+        leds: 0,
+        keycodes: [keycode, 0, 0, 0, 0, 0],
+    })
 }
